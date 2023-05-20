@@ -35,10 +35,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(require("@actions/core"));
 const bolt_1 = require("@slack/bolt");
 const web_api_1 = require("@slack/web-api");
+const users_1 = require("./users");
 const token = process.env.SLACK_BOT_TOKEN || "";
 const signingSecret = process.env.SLACK_SIGNING_SECRET || "";
 const slackAppToken = process.env.SLACK_APP_TOKEN || "";
 const channel_id = process.env.SLACK_CHANNEL_ID || "";
+const user_yaml_path = "./data/users.yaml";
 const app = new bolt_1.App({
     token: token,
     signingSecret: signingSecret,
@@ -58,6 +60,23 @@ function run() {
             const workflow = process.env.GITHUB_WORKFLOW || "";
             const runnerOS = process.env.RUNNER_OS || "";
             const actor = process.env.GITHUB_ACTOR || "";
+            // try {
+            //   // users.list APIメソッドを使ってユーザーの一覧を取得
+            //   const result = await web.users.list();
+            //   // check not undefined
+            //   if (result.members === undefined) {
+            //     console.error("result.members is undefined");
+            //     process.exit(1);
+            //   }
+            //   // 各ユーザーのメールアドレスを出力
+            //   for (let user of result.members) {
+            //     if (user) {
+            //       console.log(`User: ${user.name}, Id: ${user.id}`);
+            //     }
+            //   }
+            // } catch (error) {
+            //   console.error(error);
+            // }
             (() => __awaiter(this, void 0, void 0, function* () {
                 yield web.chat.postMessage({
                     channel: channel_id,
@@ -132,6 +151,33 @@ function run() {
             app.action('slack-approval-approve', ({ ack, client, body, logger }) => __awaiter(this, void 0, void 0, function* () {
                 var _a, _b, _c;
                 yield ack();
+                const userDatabase = new users_1.UserDatabase();
+                try {
+                    userDatabase.load(user_yaml_path);
+                }
+                catch (e) {
+                    logger.error(`Failed to load yaml file: ${user_yaml_path}`);
+                    logger.error(e);
+                }
+                // TODO: slackに対してエラーであることを伝える
+                // TODO: Databaseにuseridを保存する
+                const user = userDatabase.searchBySlackUid(body.user.id);
+                if (user === undefined) {
+                    logger.error(`User not found: ${body.user.id}`);
+                    process.exit(1);
+                }
+                if (user.github_userid === undefined) {
+                    logger.error(`user.github_userid is undefined`);
+                    process.exit(1);
+                }
+                if (user.slack_userid === undefined) {
+                    logger.error(`user.slack_userid is undefined`);
+                    process.exit(1);
+                }
+                if (user.github_userid === actor) {
+                    logger.error(`${actor} who merged PR shoud not be seme with ${user.github_userid}`);
+                    process.exit(1);
+                }
                 try {
                     const response_blocks = (_a = body.message) === null || _a === void 0 ? void 0 : _a.blocks;
                     response_blocks.pop();
